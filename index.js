@@ -41,8 +41,27 @@ this.emit(':tell', speechOutput);
 // the list contains a list of entries. The List (L) type is an array.
 // This means I have to change all of my code.
 
-
+// Globals
 var NOT_IMPLEMENTED = ' is not yet implemented';
+// Help Message
+var helpMsgSpeech = new Speech();
+helpMsgSpeech.say('The List of Lists skill allows you to maintain multiple lists with Alexa.');
+helpMsgSpeech.pause('250ms');
+helpMsgSpeech.say('To create a new list, say create list, and then the list name');
+helpMsgSpeech.pause('250ms');
+helpMsgSpeech.say('To add an entry to your active list, say: add entry followed by the entry name');
+helpMsgSpeech.pause('250ms');
+helpMsgSpeech.say('To switch to a different list say: change list to your list name');
+helpMsgSpeech.pause('250ms');
+helpMsgSpeech.say('To delete a list, say: delete list, and the name of the list to delete');
+helpMsgSpeech.pause('250ms');
+helpMsgSpeech.say('To remove an entry from a list, say: delete entry, followed by the entry name');
+helpMsgSpeech.pause('250ms');
+helpMsgSpeech.say('To say all of your lists, say: what are my lists');
+helpMsgSpeech.pause('250ms');
+helpMsgSpeech.say('To list the entries in your active list, say: what are my entries');
+helpMsgSpeech.pause('250ms');
+helpMsgSpeech.say('What would you like to do?')
 
 // dynamodb persistence
 exports.handler = function (event, context, callback) {
@@ -56,32 +75,8 @@ exports.handler = function (event, context, callback) {
 var handlers = {
     // Built in Amazon intents:
     'AMAZON.HelpIntent': function () {
-        var speech = new Speech();
-        speech.say('The List of Lists skill allows you to maintain multiple lists with Alexa.');
-        speech.pause('250ms');
-        speech.say('To create a new list, say create list, and then the list name');
-        speech.pause('250ms');
-        speech.say('To add an entry to your active list, say: add entry followed by the entry name');
-        speech.pause('250ms');
-        speech.say('To switch to a different list say: change list to your list name');
-        speech.pause('250ms');
-        speech.say('To delete a list, say: delete list, and the name of the list to delete');
-        speech.pause('250ms');
-        speech.say('To remove an entry from a list, say: delete entry, followed by the entry name');
-        speech.pause('250ms');
-        speech.say('To say all of your lists, say: what are my lists');
-        speech.pause('250ms');
-        speech.say('To list the entries in your active list, say: what are my entries');
-        speech.pause('250ms');
-        speech.say('What would you like to do?')
-        var speechOutput = speech.ssml(true);
-        this.emit(':ask', speechOutput, 'Please say that again');
-    },
-    'AMAZON.StopIntent': function () {
-        this.emit(':tell', 'Amazon stop intent' + NOT_IMPLEMENTED);
-    },
-    'AMAZON.CancelIntent': function () {
-        this.emit(':tell', 'Amazon cancel intent' + NOT_IMPLEMENTED);
+        var helpMsg = helpMsgSpeech.ssml(true);
+        this.emit(':ask', helpMsg, 'Please say that again');
     },
     'LaunchRequest': function () {
         // Works
@@ -100,7 +95,7 @@ var handlers = {
             this.emit(':tell', 'You currently have no active list.');
         } else {
             this.emit(':saveState', true);
-            this.emit(':tell', 'The current active list is ' + this.attributes['activeList']);
+            this.emit(':tell', 'Welcome to your List of Lists. The current active list is ' + this.attributes['activeList']);
         }
     },
     'addItemIntent': function () {
@@ -145,9 +140,15 @@ var handlers = {
         // entry in the ListItems table though. That is only
         // done in the addItemIntent
         var newList = this.event.request.intent.slots.listName.value;
-        this.attributes['activeList'] = newList;
-        this.emit(':saveState', true);
-        this.emit(':tell', 'Changing active list to ' + newList);
+        if (newList) {
+            this.attributes['activeList'] = newList;
+            this.emit(':saveState', true);
+            this.emit(':tell', 'Changing active list to ' + newList);
+        } else {
+            // Handling the empty list name.
+            // Cna make it better by prompting for an answer.
+            this.emit(':tell', 'I didn\'t get the list name. To change active lists say: change list to, followed by the list name');
+        }
     },
     'deleteListIntent': function () {
         // Works, but I would like to change the actions somewhat
@@ -156,63 +157,77 @@ var handlers = {
         var activeList = this.attributes['activeList'];
         var userId = this.event.session.user.userId;
         var listToDelete = this.event.request.intent.slots.listName.value;
-        var params = {
-            TableName: "ListItems",
-            Key: {
-                "userId": userId,
-                "listName": listToDelete
-            },
-        }
-        docClient.delete(params, function (err, data) {
-            if (err) {
-                console.log(err);
-                self.emit(':tell', "Unable to delete " + listToDelete);
-            } else {
-                // this is not exactly correct.
-                // I also would like to set the active list to nothing,
-                // and emit with state, but that wasn't working.
-                self.emit(':tell', 'Deleted list ' + listToDelete);
+        if (listToDelete) {
+          var params = {
+                TableName: "ListItems",
+                Key: {
+                    "userId": userId,
+                    "listName": listToDelete
+                },
             }
-        });
+            docClient.delete(params, function (err, data) {
+                if (err) {
+                    console.log(err);
+                    self.emit(':tell', "Unable to delete " + listToDelete);
+                } else {
+                    // this is not exactly correct.
+                    // I also would like to set the active list to nothing,
+                    // and emit with state, but that wasn't working.
+                    self.emit(':tell', 'Deleted list ' + listToDelete);
+                }
+            });
+        } else {
+            self.emit(':tell', 'I didn\'t get the list to delete. To delete a list say: delete list, and the name of the list to delete' );
+        }
     },
     'newListIntent': function () {
         // Works
         // User wants to create a new list.
         // Implementation is the same as changeActiveListIntent
         var newList = this.event.request.intent.slots.listName.value;
-        this.attributes['activeList'] = newList;
-        this.emit(':saveState', true);
-        this.emit(':tell', 'Changing active list to ' + newList);
+        if (newList) {
+            this.attributes['activeList'] = newList;
+            this.emit(':saveState', true);
+            this.emit(':tell', 'Changing active list to ' + newList);
+        } else {
+            // Handling the empty list name.
+            // Cna make it better by prompting for an answer.
+            this.emit(':tell', 'I didn\'t get the name of the list. To create a new list, say create list, and then the list name');
+        }
     },
     'removeItemIntent': function () {
         // Works.
         var self = this;
         var userId = this.event.session.user.userId;
         var listItem = this.event.request.intent.slots.listItem.value;
-        var myList = this.attributes['activeList'];
-        var params =  {
-            TableName: 'ListItems',
-            Key: {
-                'userId': userId,
-                'listName': myList
-            },
-            AttributeUpdates: {
-                'listItems': {
-                    Action: "DELETE",
-                    Value: docClient.createSet(listItem)
+        if (listItem) {
+            var myList = this.attributes['activeList'];
+            var params =  {
+                TableName: 'ListItems',
+                Key: {
+                    'userId': userId,
+                    'listName': myList
+                },
+                AttributeUpdates: {
+                    'listItems': {
+                        Action: "DELETE",
+                        Value: docClient.createSet(listItem)
+                    }
                 }
-            }
-        };
-        docClient.update( params, function(err, data) {
-            if (err) {
-                console.log(err);
-                self.emit(':tell', 'There was an error deleting ' + listItem + ' from ' + myList);
-            }
-            else {
-                console.log(data);
-                self.emit(':tell', 'Deleted ' + listItem + ' from ' + myList);
-            }
-        });
+            };
+            docClient.update( params, function(err, data) {
+                if (err) {
+                    console.log(err);
+                    self.emit(':tell', 'There was an error deleting ' + listItem + ' from ' + myList);
+                }
+                else {
+                    console.log(data);
+                    self.emit(':tell', 'Deleted ' + listItem + ' from ' + myList);
+                }
+            });
+        } else {
+            self.emit(':tell', 'I didn\'t get the item to delete. To remove an entry from a list, say: delete entry, followed by the entry name.');
+        }
     },
     'sayAllListsIntent': function () {
         // Works
@@ -270,7 +285,11 @@ var handlers = {
                         myResponse = entry + ', ' + myResponse;
                     });
                 });
-                self.emit(':tell', 'Items in list ' + myList + ' are: ' + myResponse);
+                if (myResponse.length === 0) {
+                    self.emit(':tell', 'The list ' + myList + ' is empty');
+                } else {
+                    self.emit(':tell', 'Items in list ' + myList + ' are: ' + myResponse);
+                }
             }
         });
     }
